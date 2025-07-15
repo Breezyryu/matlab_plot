@@ -10,22 +10,49 @@ function combinedData = combineBatteryData()
     end
 
     % 2. 폴더 내의 모든 파일 목록을 가져옵니다.
-    % 파일명이 숫자로 되어 있으므로, 이름순으로 정렬하여 순서를 보장합니다.
     filePattern = fullfile(folderPath, '*');
     theFiles = dir(filePattern);
 
-    % 폴더(directory)는 제외하고 파일만 필터링합니다.
+    % 폴더(directory)는 제외합니다.
     theFiles = theFiles(~[theFiles.isdir]);
+
+    % [추가됨] 파일 이름이 숫자로만 구성된 파일만 필터링합니다. (예: '000001', '000002')
+    allFileNames = {theFiles.name}; % 모든 파일 이름을 cell 배열로 추출
+    isNumericName = ~cellfun('isempty', regexp(allFileNames, '^\d+$')); % 이름이 숫자로만 구성되었는지 확인
+    theFiles = theFiles(isNumericName); % 숫자 형식의 파일만 남김
     
-    % 파일 이름을 기준으로 오름차순 정렬합니다.
-    [~, sortOrder] = sort(str2double(regexp({theFiles.name}, '\d+', 'match', 'once')));
-    theFiles = theFiles(sortOrder);
+    % 3. 필터링된 파일들을 이름 순으로 정렬합니다.
+    if ~isempty(theFiles)
+        % 이제 모든 파일 이름이 숫자이므로, 숫자로 변환하여 정확하게 정렬합니다.
+        [~, sortOrder] = sort(str2double({theFiles.name}));
+        theFiles = theFiles(sortOrder);
+    else
+        disp('폴더에 숫자 형식의 데이터 파일이 없습니다. (예: 000001)');
+        combinedData = [];
+        return;
+    end
 
+    % 4. 첫 번째 파일을 기준으로 데이터 가져오기 '규칙(옵션)'을 설정합니다.
+    try
+        firstFile = fullfile(folderPath, theFiles(1).name);
+        fprintf('가져오기 규칙 설정을 위해 첫 파일을 분석합니다: %s\n', theFiles(1).name);
+        
+        opts = detectImportOptions(firstFile, 'FileType', 'text', 'NumHeaderLines', 3);
+        opts.Delimiter = ',';
+        opts.ConsecutiveDelimitersRule = 'split';
+        opts.EmptyLineRule = 'skip';
+        opts.VariableNamingRule = 'preserve';
+        
+    catch ME
+        fprintf('오류: 첫 파일로부터 데이터 형식을 분석할 수 없습니다. 에러: %s\n', ME.message);
+        combinedData = [];
+        return;
+    end
 
-    % 3. 모든 파일의 데이터를 저장할 빈 cell 배열을 초기화합니다.
+    % 5. 모든 데이터를 저장할 빈 cell 배열을 초기화합니다.
     allData = {};
 
-    % 4. 정렬된 파일 목록을 순회하며 각 파일을 읽습니다.
+    % 6. 정렬된 파일 목록을 순회하며 각 파일을 읽습니다.
     for i = 1:length(theFiles)
         baseFileName = theFiles(i).name;
         fullFileName = fullfile(folderPath, baseFileName);
@@ -33,27 +60,11 @@ function combinedData = combineBatteryData()
         fprintf('파일 읽는 중: %s\n', fullFileName);
         
         try
-            % 5. 각 파일에서 데이터를 읽습니다.
-            % 파일 형식에 맞춰 앞 4줄(메타데이터)을 건너뛰고 데이터를 읽습니다.
-            % readtable이 자동으로 4번째 줄을 헤더로 인식하게끔 'NumHeaderLines'를 3으로 설정합니다.
-            opts = detectImportOptions(fullFileName, 'FileType', 'text', 'NumHeaderLines', 3);
-            
-            % 쉼표(,)를 구분자로 설정합니다.
-            opts.Delimiter = ',';
-            
-            % 연속된 구분자를 단일 구분자로 처리하고, 빈 필드를 NaN으로 가져옵니다.
-            opts.ConsecutiveDelimitersRule = 'split';
-            opts.EmptyLineRule = 'skip';
-            
-            % 테이블 형식으로 데이터를 읽어옵니다.
             dataTable = readtable(fullFileName, opts);
-            
-            % 6. 읽어온 데이터를 cell 배열에 추가합니다.
             allData{end+1} = dataTable;
             
         catch ME
-            % 파일 읽기 중 오류 발생 시 메시지를 출력합니다.
-            fprintf('오류: 파일 %s를 읽을 수 없습니다. 에러 메시지: %s\n', baseFileName, ME.message);
+            fprintf('경고: 파일 %s 처리 중 문제가 발생하여 건너뜁니다. (에러: %s)\n', baseFileName, ME.message);
         end
     end
 
@@ -61,20 +72,14 @@ function combinedData = combineBatteryData()
     if ~isempty(allData)
         combinedData = vertcat(allData{:});
         
-        % 합쳐진 데이터의 크기와 처음 5개 행을 출력하여 확인합니다.
         disp('========================================');
         disp('데이터 통합 완료!');
         fprintf('통합된 데이터 테이블의 크기: %d x %d\n', size(combinedData, 1), size(combinedData, 2));
         disp('통합된 데이터 상위 5개 행:');
         disp(head(combinedData, 5));
         
-        % (선택 사항) 합쳐진 데이터를 새로운 CSV 파일로 저장
-        % outputFileName = fullfile(folderPath, 'combined_battery_data.csv');
-        % writetable(combinedData, outputFileName);
-        % fprintf('통합된 데이터가 %s 파일로 저장되었습니다.\n', outputFileName);
-        
     else
-        disp('읽을 수 있는 데이터 파일이 없습니다.');
+        disp('데이터를 성공적으로 읽어오지 못했습니다.');
         combinedData = [];
     end
 end
