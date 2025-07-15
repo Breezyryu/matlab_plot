@@ -1,4 +1,4 @@
-% MATLAB Script for Battery Data Visualization (Separated Charge/Discharge Capacity)
+% MATLAB Script for Battery Data Visualization (Improved Capacity Logic)
 
 % --- 1. 파일 로드 ---
 files = dir('*.xlsx');
@@ -26,70 +26,78 @@ for i = 1:numBatteries
     batteryData(i).Temp    = tempTable{:, 8};
 end
 
-% --- 2.5. 용량(Capacity) 계산 (★수정된 부분: 충전/방전 분리) ---
-fprintf('SOC 변화를 기준으로 충/방전 용량(Ah)을 분리하여 계산합니다...\n');
+% --- 2.5. 용량(Capacity) 계산 (★개선된 로직) ---
+fprintf('SOC 증가/감소 상태를 추적하여 충/방전 용량을 계산합니다...\n');
 for i = 1:numBatteries
-    % SOC 값의 변화량 계산 (데이터 포인트 간의 차이)
-    soc_diff = diff(batteryData(i).SOC);
-
-    % 충전/방전 전류를 분리하여 저장할 벡터 초기화
-    charge_current = zeros(size(batteryData(i).Current));
-    discharge_current = zeros(size(batteryData(i).Current));
+    % 결과를 저장할 벡터 초기화
+    charge_capacity_Ah = zeros(size(batteryData(i).Time));
+    discharge_capacity_Ah = zeros(size(batteryData(i).Time));
     
-    % SOC 변화량에 따라 전류 할당
-    % diff는 벡터 길이를 1 줄이므로, k+1 인덱스에 전류값을 할당
-    for k = 1:length(soc_diff)
-        if soc_diff(k) > 0 % SOC 증가 -> 충전
-            % 충전 전류는 음수값을 가지는 경우가 많으므로 절대값 사용
-            charge_current(k+1) = abs(batteryData(i).Current(k+1));
-        elseif soc_diff(k) < 0 % SOC 감소 -> 방전
-            % 방전 전류는 양수값을 가지는 경우가 많지만, 일관성을 위해 절대값 사용
-            discharge_current(k+1) = abs(batteryData(i).Current(k+1));
+    % 루프를 통해 각 시점의 용량을 계산 (두 번째 데이터 포인트부터 시작)
+    for k = 2:length(batteryData(i).Time)
+        % 이전 시점의 누적 용량을 가져옴
+        prev_charge_cap = charge_capacity_Ah(k-1);
+        prev_discharge_cap = discharge_capacity_Ah(k-1);
+        
+        % 현재 상태 판별 (SOC 증가/감소)
+        if batteryData(i).SOC(k) > batteryData(i).SOC(k-1) % 충전 상태
+            % 현재 스텝의 시간 간격 (dt)
+            dt_seconds = batteryData(i).Time(k) - batteryData(i).Time(k-1);
+            % 현재 스텝의 평균 전류 (사다리꼴 적분 원리)
+            avg_current = (abs(batteryData(i).Current(k)) + abs(batteryData(i).Current(k-1))) / 2;
+            % 현재 스텝에서 충전된 용량 (Ah)
+            step_capacity_Ah = (avg_current * dt_seconds) / 3600;
+            
+            % 충전 용량은 누적하고, 방전 용량은 이전 값을 유지
+            charge_capacity_Ah(k) = prev_charge_cap + step_capacity_Ah;
+            discharge_capacity_Ah(k) = prev_discharge_cap;
+            
+        elseif batteryData(i).SOC(k) < batteryData(i).SOC(k-1) % 방전 상태
+            dt_seconds = batteryData(i).Time(k) - batteryData(i).Time(k-1);
+            avg_current = (abs(batteryData(i).Current(k)) + abs(batteryData(i).Current(k-1))) / 2;
+            step_capacity_Ah = (avg_current * dt_seconds) / 3600;
+            
+            % 방전 용량은 누적하고, 충전 용량은 이전 값을 유지
+            discharge_capacity_Ah(k) = prev_discharge_cap + step_capacity_Ah;
+            charge_capacity_Ah(k) = prev_charge_cap;
+            
+        else % SOC 변화 없음 (휴지 상태)
+            % 충전, 방전 용량 모두 이전 값을 유지
+            charge_capacity_Ah(k) = prev_charge_cap;
+            discharge_capacity_Ah(k) = prev_discharge_cap;
         end
     end
     
-    % 분리된 전류를 시간에 대해 누적 적분 (단위: Ampere-seconds)
-    charge_capacity_As = cumtrapz(batteryData(i).Time, charge_current);
-    discharge_capacity_As = cumtrapz(batteryData(i).Time, discharge_current);
-    
-    % Ah 단위로 변환 후 구조체에 저장
-    batteryData(i).Charge_Capacity_Ah = charge_capacity_As / 3600;
-    batteryData(i).Discharge_Capacity_Ah = discharge_capacity_As / 3600;
+    % 계산된 결과를 구조체에 저장
+    batteryData(i).Charge_Capacity_Ah = charge_capacity_Ah;
+    batteryData(i).Discharge_Capacity_Ah = discharge_capacity_Ah;
 end
 fprintf('용량 계산을 완료했습니다.\n');
 
 
 % --- 3. 데이터 시각화 (Nature 스타일 적용) ---
-
-% --- 스타일 정의 ---
+% 스타일 정의 및 플롯 코드는 이전과 동일합니다.
 plotFontStyle = 'Arial';
 plotFontSize = 10; 
 plotLineWidth = 1.5;
 axisLineWidth = 1.2;
 colors = [0, 114, 178; 213, 94, 0; 0, 158, 115] / 255; 
 
-%% 플롯 1, 2, 3 (이전과 동일)
-% Voltage and Current Plot
+% 플롯 1: 전압 및 전류
 figure('Color', 'white', 'Name', 'Voltage and Current Analysis'); 
-numRows = ceil(numBatteries / 2);
-numCols = 2;
+numRows = ceil(numBatteries / 2); numCols = 2;
 for i = 1:numBatteries
     subplot(numRows, numCols, i); 
-    yyaxis left;
-    p1 = plot(batteryData(i).Time, batteryData(i).Voltage, 'LineWidth', plotLineWidth, 'Color', colors(1,:));
-    ylabel('Voltage (V)');
-    yyaxis right;
-    p2 = plot(batteryData(i).Time, batteryData(i).Current, '--', 'LineWidth', plotLineWidth, 'Color', colors(2,:));
-    ylabel('Current (A)');
+    yyaxis left; p1 = plot(batteryData(i).Time, batteryData(i).Voltage, 'LineWidth', plotLineWidth, 'Color', colors(1,:)); ylabel('Voltage (V)');
+    yyaxis right; p2 = plot(batteryData(i).Time, batteryData(i).Current, '--', 'LineWidth', plotLineWidth, 'Color', colors(2,:)); ylabel('Current (A)');
     ax = gca; ax.FontName = plotFontStyle; ax.FontSize = plotFontSize; ax.LineWidth = axisLineWidth; ax.Box = 'on';
     ax.YAxis(1).Color = 'k'; ax.YAxis(2).Color = 'k'; 
-    xlabel('Time (s)');
-    title(sprintf('Battery #%d', i), 'FontWeight', 'normal'); 
+    xlabel('Time (s)'); title(sprintf('Battery #%d', i), 'FontWeight', 'normal'); 
     if i == numBatteries; legend([p1, p2], {'Voltage', 'Current'}, 'Location', 'best'); end
 end
 sgtitle('Voltage and Current Profiles', 'FontSize', 14, 'FontWeight', 'bold', 'FontName', plotFontStyle);
 
-% SOC Plot
+% 플롯 2: SOC
 figure('Color', 'white', 'Name', 'SOC Comparison');
 hold on;
 for i = 1:numBatteries
@@ -100,7 +108,7 @@ ax = gca; ax.FontName = plotFontStyle; ax.FontSize = 12; ax.LineWidth = axisLine
 xlabel('Time (s)'); ylabel('State of Charge, SOC (%)'); title('Comparison of SOC over Time', 'FontWeight', 'normal');
 legend show;
 
-% V-SOC Plot
+% 플롯 3: V-SOC
 figure('Color', 'white', 'Name', 'V-SOC Curve');
 hold on;
 for i = 1:numBatteries
@@ -111,40 +119,24 @@ ax = gca; ax.FontName = plotFontStyle; ax.FontSize = 12; ax.LineWidth = axisLine
 xlabel('State of Charge, SOC (%)'); ylabel('Voltage (V)'); title('Voltage vs. SOC Profile', 'FontWeight', 'normal');
 legend show; axis tight;
 
-%% 플롯 4: 시간에 따른 누적 충/방전 용량 비교 (★수정된 플롯)
+% 플롯 4: 충/방전 용량
 figure('Color', 'white', 'Name', 'Charge-Discharge Capacity');
-
-% 1. 방전 용량 플롯
-subplot(1, 2, 1); % 1x2 그리드의 첫 번째 서브플롯
+subplot(1, 2, 1);
 hold on;
 for i = 1:numBatteries
-    plot(batteryData(i).Time, batteryData(i).Discharge_Capacity_Ah, ...
-        'LineWidth', plotLineWidth, ...
-        'Color', colors(mod(i-1, size(colors,1))+1,:), ...
-        'DisplayName', sprintf('Battery #%d', i));
+    plot(batteryData(i).Time, batteryData(i).Discharge_Capacity_Ah, 'LineWidth', plotLineWidth, 'Color', colors(mod(i-1, size(colors,1))+1,:), 'DisplayName', sprintf('Battery #%d', i));
 end
 hold off;
 ax = gca; ax.FontName = plotFontStyle; ax.FontSize = 12; ax.LineWidth = axisLineWidth; ax.Box = 'on';
-xlabel('Time (s)'); ylabel('Cumulative Capacity (Ah)');
-title('Discharge Capacity', 'FontWeight', 'normal');
-legend show;
-
-% 2. 충전 용량 플롯
-subplot(1, 2, 2); % 1x2 그리드의 두 번째 서브플롯
+xlabel('Time (s)'); ylabel('Cumulative Capacity (Ah)'); title('Discharge Capacity', 'FontWeight', 'normal'); legend show;
+subplot(1, 2, 2);
 hold on;
 for i = 1:numBatteries
-    plot(batteryData(i).Time, batteryData(i).Charge_Capacity_Ah, ...
-        'LineWidth', plotLineWidth, ...
-        'Color', colors(mod(i-1, size(colors,1))+1,:), ...
-        'DisplayName', sprintf('Battery #%d', i));
+    plot(batteryData(i).Time, batteryData(i).Charge_Capacity_Ah, 'LineWidth', plotLineWidth, 'Color', colors(mod(i-1, size(colors,1))+1,:), 'DisplayName', sprintf('Battery #%d', i));
 end
 hold off;
 ax = gca; ax.FontName = plotFontStyle; ax.FontSize = 12; ax.LineWidth = axisLineWidth; ax.Box = 'on';
-xlabel('Time (s)'); ylabel('Cumulative Capacity (Ah)');
-title('Charge Capacity', 'FontWeight', 'normal');
-legend show;
-
-% Figure 전체 제목
+xlabel('Time (s)'); ylabel('Cumulative Capacity (Ah)'); title('Charge Capacity', 'FontWeight', 'normal'); legend show;
 sgtitle('Cumulative Capacity over Time', 'FontSize', 14, 'FontWeight', 'bold', 'FontName', plotFontStyle);
 
 fprintf('모든 플롯 생성을 완료했습니다.\n');
