@@ -20,7 +20,7 @@ try
     fprintf('총 %d개의 실험 데이터가 발견되었습니다.\n', num_experiments);
     
     % Scientific journal 스타일 설정
-    figure('Position', [100, 100, 800, 600]);
+    figure('Position', [100, 100, 1000, 600]);
     
     % 색상 팔레트 (과학 저널 스타일)
     colors = [
@@ -49,24 +49,45 @@ try
         cycle_clean = cycle_data(valid_idx);
         capacity_clean = capacity_data(valid_idx);
         
-        % 플롯 (선 두께와 마커 크기 조정)
+        % 데이터 분류 및 처리
+        [cycle_02C, capacity_02C, cycle_hybrid, capacity_hybrid] = ...
+            processBatteryData(cycle_clean, capacity_clean);
+        
+        % 색상 인덱스
         color_idx = mod(i-1, size(colors, 1)) + 1;
-        plot(cycle_clean, capacity_clean, 'o-', ...
-             'Color', colors(color_idx, :), ...
-             'LineWidth', 1.5, ...
-             'MarkerSize', 6, ...
-             'MarkerFaceColor', colors(color_idx, :), ...
-             'MarkerEdgeColor', colors(color_idx, :), ...
-             'DisplayName', sprintf('Battery %d', i));
+        
+        % 0.2C 데이터 플롯 (실선)
+        if ~isempty(cycle_02C)
+            plot(cycle_02C, capacity_02C, 'o-', ...
+                 'Color', colors(color_idx, :), ...
+                 'LineWidth', 1.5, ...
+                 'MarkerSize', 6, ...
+                 'MarkerFaceColor', 'none', ...
+                 'MarkerEdgeColor', colors(color_idx, :), ...
+                 'LineStyle', '-', ...
+                 'DisplayName', sprintf('Battery %d - 0.2C', i));
+        end
+        
+        % 1.0C+0.5C 하이브리드 데이터 플롯 (점선)
+        if ~isempty(cycle_hybrid)
+            plot(cycle_hybrid, capacity_hybrid, 's--', ...
+                 'Color', colors(color_idx, :), ...
+                 'LineWidth', 1.5, ...
+                 'MarkerSize', 6, ...
+                 'MarkerFaceColor', 'none', ...
+                 'MarkerEdgeColor', colors(color_idx, :), ...
+                 'LineStyle', '--', ...
+                 'DisplayName', sprintf('Battery %d - 1.0C+0.5C', i));
+        end
     end
     
     % 축 레이블 및 제목 설정 (과학 저널 스타일)
     xlabel('Cycle Number', 'FontSize', 14, 'FontWeight', 'bold');
     ylabel('Capacity (mAh g^{-1})', 'FontSize', 14, 'FontWeight', 'bold');
-    title('Cycle Performance of Battery Cells', 'FontSize', 16, 'FontWeight', 'bold');
+    title('Cycle Performance: 0.2C vs 1.0C+0.5C Hybrid Discharge', 'FontSize', 16, 'FontWeight', 'bold');
     
     % 범례 설정
-    legend('Location', 'best', 'FontSize', 12, 'Box', 'off');
+    legend('Location', 'best', 'FontSize', 10, 'Box', 'off');
     
     % 격자 설정
     grid on;
@@ -77,7 +98,7 @@ try
     set(gca, 'Box', 'on');
     
     % 여백 조정
-    set(gca, 'Position', [0.13, 0.13, 0.82, 0.75]);
+    set(gca, 'Position', [0.1, 0.13, 0.85, 0.75]);
     
     % 축 범위 자동 조정
     xlim([0, max(xlim)]);
@@ -90,4 +111,104 @@ try
 catch ME
     fprintf('오류가 발생했습니다: %s\n', ME.message);
     fprintf('파일 형식이나 시트 이름을 확인해주세요.\n');
+end
+
+% 데이터 처리 함수
+function [cycle_02C, capacity_02C, cycle_hybrid, capacity_hybrid] = processBatteryData(cycles, capacities)
+    % 초기화
+    cycle_02C = [];
+    capacity_02C = [];
+    cycle_hybrid = [];
+    capacity_hybrid = [];
+    
+    % 하이브리드 사이클 처리를 위한 임시 변수
+    temp_1C_cycle = [];
+    temp_1C_capacity = [];
+    temp_05C_cycle = [];
+    temp_05C_capacity = [];
+    
+    i = 1;
+    while i <= length(cycles)
+        current_cycle = cycles(i);
+        current_capacity = capacities(i);
+        
+        % 0.2C 사이클 판별 (예: 1, 497 등 - 패턴에 따라 조정 필요)
+        if mod(current_cycle, 4) == 1  % 1, 5, 9, 13... 중에서 1, 497... 패턴
+            % 더 정확한 판별을 위해 다음 사이클과의 간격 확인
+            if i < length(cycles)
+                next_cycle = cycles(i+1);
+                if next_cycle - current_cycle == 4  % 1.0C 사이클이 4 간격 후에 있음
+                    % 1.0C 사이클의 시작
+                    temp_1C_cycle = current_cycle;
+                    temp_1C_capacity = current_capacity;
+                elseif next_cycle - current_cycle == 1  % 0.5C 사이클이 바로 다음에 있음
+                    % 0.5C 사이클 처리
+                    temp_05C_cycle = current_cycle;
+                    temp_05C_capacity = current_capacity;
+                    
+                    % 1.0C + 0.5C 합산
+                    if ~isempty(temp_1C_cycle)
+                        hybrid_cycle = temp_1C_cycle;  % 1.0C 사이클 번호 사용
+                        hybrid_capacity = temp_1C_capacity + temp_05C_capacity;
+                        
+                        cycle_hybrid = [cycle_hybrid; hybrid_cycle];
+                        capacity_hybrid = [capacity_hybrid; hybrid_capacity];
+                        
+                        % 임시 변수 초기화
+                        temp_1C_cycle = [];
+                        temp_1C_capacity = [];
+                        temp_05C_cycle = [];
+                        temp_05C_capacity = [];
+                    end
+                else
+                    % 0.2C 사이클 (큰 간격)
+                    cycle_02C = [cycle_02C; current_cycle];
+                    capacity_02C = [capacity_02C; current_capacity];
+                end
+            else
+                % 마지막 데이터
+                if current_cycle > 400  % 497 같은 큰 사이클 번호
+                    cycle_02C = [cycle_02C; current_cycle];
+                    capacity_02C = [capacity_02C; current_capacity];
+                end
+            end
+        else
+            % 패턴 기반 분류
+            if mod(current_cycle, 4) == 1  % 5, 9, 13... (1.0C)
+                temp_1C_cycle = current_cycle;
+                temp_1C_capacity = current_capacity;
+            elseif mod(current_cycle, 4) == 2  % 6, 10, 14... (0.5C)
+                temp_05C_cycle = current_cycle;
+                temp_05C_capacity = current_capacity;
+                
+                % 1.0C + 0.5C 합산
+                if ~isempty(temp_1C_cycle)
+                    hybrid_cycle = temp_1C_cycle;  % 1.0C 사이클 번호 사용
+                    hybrid_capacity = temp_1C_capacity + temp_05C_capacity;
+                    
+                    cycle_hybrid = [cycle_hybrid; hybrid_cycle];
+                    capacity_hybrid = [capacity_hybrid; hybrid_capacity];
+                    
+                    % 임시 변수 초기화
+                    temp_1C_cycle = [];
+                    temp_1C_capacity = [];
+                    temp_05C_cycle = [];
+                    temp_05C_capacity = [];
+                end
+            end
+        end
+        
+        i = i + 1;
+    end
+    
+    % 정렬
+    if ~isempty(cycle_02C)
+        [cycle_02C, sort_idx] = sort(cycle_02C);
+        capacity_02C = capacity_02C(sort_idx);
+    end
+    
+    if ~isempty(cycle_hybrid)
+        [cycle_hybrid, sort_idx] = sort(cycle_hybrid);
+        capacity_hybrid = capacity_hybrid(sort_idx);
+    end
 end
