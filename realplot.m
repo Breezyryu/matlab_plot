@@ -49,14 +49,14 @@ try
         cycle_clean = cycle_data(valid_idx);
         capacity_clean = capacity_data(valid_idx);
         
-        % 데이터 분류 및 처리
+        % 매크로 로직에 따른 데이터 처리
         [cycle_02C, capacity_02C, cycle_hybrid, capacity_hybrid] = ...
-            processBatteryData(cycle_clean, capacity_clean);
+            processDataWithMacroLogic(cycle_clean, capacity_clean);
         
         % 색상 인덱스
         color_idx = mod(i-1, size(colors, 1)) + 1;
         
-        % 0.2C 데이터 플롯 (실선)
+        % 0.2C 데이터 플롯 (실선, 원형 마커)
         if ~isempty(cycle_02C)
             plot(cycle_02C, capacity_02C, 'o-', ...
                  'Color', colors(color_idx, :), ...
@@ -68,7 +68,7 @@ try
                  'DisplayName', sprintf('Battery %d - 0.2C', i));
         end
         
-        % 1.0C+0.5C 하이브리드 데이터 플롯 (점선)
+        % 1.0C+0.5C 하이브리드 데이터 플롯 (점선, 사각형 마커)
         if ~isempty(cycle_hybrid)
             plot(cycle_hybrid, capacity_hybrid, 's--', ...
                  'Color', colors(color_idx, :), ...
@@ -113,92 +113,54 @@ catch ME
     fprintf('파일 형식이나 시트 이름을 확인해주세요.\n');
 end
 
-% 데이터 처리 함수
-function [cycle_02C, capacity_02C, cycle_hybrid, capacity_hybrid] = processBatteryData(cycles, capacities)
+% 매크로 로직을 적용한 데이터 처리 함수
+function [cycle_02C, capacity_02C, cycle_hybrid, capacity_hybrid] = processDataWithMacroLogic(cycles, capacities)
     % 초기화
     cycle_02C = [];
     capacity_02C = [];
     cycle_hybrid = [];
     capacity_hybrid = [];
     
-    % 하이브리드 사이클 처리를 위한 임시 변수
-    temp_1C_cycle = [];
-    temp_1C_capacity = [];
-    temp_05C_cycle = [];
-    temp_05C_capacity = [];
-    
     i = 1;
     while i <= length(cycles)
         current_cycle = cycles(i);
         current_capacity = capacities(i);
         
-        % 0.2C 사이클 판별 (예: 1, 497 등 - 패턴에 따라 조정 필요)
-        if mod(current_cycle, 4) == 1  % 1, 5, 9, 13... 중에서 1, 497... 패턴
-            % 더 정확한 판별을 위해 다음 사이클과의 간격 확인
-            if i < length(cycles)
-                next_cycle = cycles(i+1);
-                if next_cycle - current_cycle == 4  % 1.0C 사이클이 4 간격 후에 있음
-                    % 1.0C 사이클의 시작
-                    temp_1C_cycle = current_cycle;
-                    temp_1C_capacity = current_capacity;
-                elseif next_cycle - current_cycle == 1  % 0.5C 사이클이 바로 다음에 있음
-                    % 0.5C 사이클 처리
-                    temp_05C_cycle = current_cycle;
-                    temp_05C_capacity = current_capacity;
-                    
-                    % 1.0C + 0.5C 합산
-                    if ~isempty(temp_1C_cycle)
-                        hybrid_cycle = temp_1C_cycle;  % 1.0C 사이클 번호 사용
-                        hybrid_capacity = temp_1C_capacity + temp_05C_capacity;
-                        
-                        cycle_hybrid = [cycle_hybrid; hybrid_cycle];
-                        capacity_hybrid = [capacity_hybrid; hybrid_capacity];
-                        
-                        % 임시 변수 초기화
-                        temp_1C_cycle = [];
-                        temp_1C_capacity = [];
-                        temp_05C_cycle = [];
-                        temp_05C_capacity = [];
-                    end
-                else
-                    % 0.2C 사이클 (큰 간격)
-                    cycle_02C = [cycle_02C; current_cycle];
-                    capacity_02C = [capacity_02C; current_capacity];
-                end
+        % 매크로 로직: 사이클 차이가 3 미만인 연속 데이터를 찾아서 합산
+        if i < length(cycles) - 1
+            next_cycle = cycles(i+1);
+            third_cycle = cycles(i+2);
+            
+            % 연속된 3개 사이클의 차이 확인
+            if abs(next_cycle - current_cycle) < 3 && abs(third_cycle - next_cycle) < 3
+                % 1.0C + 0.5C 하이브리드 패턴 (2번째와 3번째 합치기)
+                next_capacity = capacities(i+1);
+                third_capacity = capacities(i+2);
+                
+                % 첫 번째는 0.2C로 처리
+                cycle_02C = [cycle_02C; current_cycle];
+                capacity_02C = [capacity_02C; current_capacity];
+                
+                % 두 번째와 세 번째를 합산하여 하이브리드로 처리
+                hybrid_cycle = next_cycle;  % 1.0C 사이클 번호 사용
+                hybrid_capacity = next_capacity + third_capacity;
+                
+                cycle_hybrid = [cycle_hybrid; hybrid_cycle];
+                capacity_hybrid = [capacity_hybrid; hybrid_capacity];
+                
+                i = i + 3;  % 3개 처리했으므로 3 증가
             else
-                % 마지막 데이터
-                if current_cycle > 400  % 497 같은 큰 사이클 번호
-                    cycle_02C = [cycle_02C; current_cycle];
-                    capacity_02C = [capacity_02C; current_capacity];
-                end
+                % 일반적인 0.2C 사이클로 처리
+                cycle_02C = [cycle_02C; current_cycle];
+                capacity_02C = [capacity_02C; current_capacity];
+                i = i + 1;
             end
         else
-            % 패턴 기반 분류
-            if mod(current_cycle, 4) == 1  % 5, 9, 13... (1.0C)
-                temp_1C_cycle = current_cycle;
-                temp_1C_capacity = current_capacity;
-            elseif mod(current_cycle, 4) == 2  % 6, 10, 14... (0.5C)
-                temp_05C_cycle = current_cycle;
-                temp_05C_capacity = current_capacity;
-                
-                % 1.0C + 0.5C 합산
-                if ~isempty(temp_1C_cycle)
-                    hybrid_cycle = temp_1C_cycle;  % 1.0C 사이클 번호 사용
-                    hybrid_capacity = temp_1C_capacity + temp_05C_capacity;
-                    
-                    cycle_hybrid = [cycle_hybrid; hybrid_cycle];
-                    capacity_hybrid = [capacity_hybrid; hybrid_capacity];
-                    
-                    % 임시 변수 초기화
-                    temp_1C_cycle = [];
-                    temp_1C_capacity = [];
-                    temp_05C_cycle = [];
-                    temp_05C_capacity = [];
-                end
-            end
+            % 마지막 데이터들
+            cycle_02C = [cycle_02C; current_cycle];
+            capacity_02C = [capacity_02C; current_capacity];
+            i = i + 1;
         end
-        
-        i = i + 1;
     end
     
     % 정렬
