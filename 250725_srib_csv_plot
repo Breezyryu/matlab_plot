@@ -15,44 +15,37 @@ for i = 1:length(files)
     dataCell{i} = data;
 end
 
-% 하나의 figure 생성
-figure;
-hold on;
-
-% 전체 unique cycles 수집 (colormap을 위해)
-allCycles = [];
+% 5. 각 파일(dataCell) 별로 독립적으로 처리 및 scatter plot
 for i = 1:length(dataCell)
-    allCycles = [allCycles; unique(dataCell{i}.Cycle_Number)];
-end
-uniqueAllCycles = unique(allCycles);
-cmap = jet(length(uniqueAllCycles));  % Colormap 설정 (전체 사이클 수에 맞춤)
-
-% 5. 각 파일 별로 사이클에 따른 데이터 분류 및 scatter plot
-cycleToColor = containers.Map(uniqueAllCycles, 1:length(uniqueAllCycles));
-for i = 1:length(dataCell)
+    % 새로운 figure 생성
+    figure;
+    hold on;
+    
+    % 현재 파일의 데이터
     data = dataCell{i};
+    
+    % 6. 사이클에 따른 데이터 분류 (unique 함수 사용)
     uniqueCycles = unique(data.Cycle_Number);
     
+    % Colormap 설정 (heatmap 스타일 gradation, hot colormap 사용)
+    cmap = hot(length(uniqueCycles));  % hot colormap으로 gradation
+    
+    % 7. 사이클별 용량-시간 scatter plot
     for j = 1:length(uniqueCycles)
         cycle = uniqueCycles(j);
         cycleData = data(data.Cycle_Number == cycle, :);
-        colorIdx = cycleToColor(cycle);
-        scatter(cycleData.Time_s, cycleData.Capacity_mAh, 10, cmap(colorIdx, :), 'filled');  % Scatter plot
+        scatter(cycleData.Time_s, cycleData.Capacity_mAh, 10, cmap(j, :), 'filled');  % Scatter plot
     end
+    
+    % 논문용 figure 세팅 (범례 제거)
+    xlabel('Time (s)', 'FontSize', 14, 'Interpreter', 'latex');
+    ylabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
+    title(sprintf('Capacity vs Time per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
+    
+    grid on;
+    set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
+    set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
+    
+    % 추가: 논문용으로 PDF export (필요 시 주석 해제)
+    % exportgraphics(gcf, sprintf('capacity_vs_time_file%d.pdf', i), 'ContentType', 'vector');
 end
-
-% 7. figure 논문용으로 세팅
-xlabel('Time (s)', 'FontSize', 14, 'Interpreter', 'latex');
-ylabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
-title('Capacity vs Time per Cycle (Scatter)', 'FontSize', 16, 'Interpreter', 'latex');
-
-% Legend 생성 (전체 unique cycles 기반)
-legendEntries = arrayfun(@(x) sprintf('Cycle %d', x), uniqueAllCycles, 'UniformOutput', false);
-legend(legendEntries, 'Location', 'Best', 'FontSize', 12);
-
-grid on;
-set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
-set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
-
-% 추가: 논문용으로 PDF export (필요 시 주석 해제)
-% exportgraphics(gcf, 'capacity_vs_time_scatter.pdf', 'ContentType', 'vector');
