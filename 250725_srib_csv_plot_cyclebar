@@ -17,8 +17,10 @@ end
 
 % 5. 각 파일(dataCell) 별로 독립적으로 처리 및 scatter plot
 for i = 1:length(dataCell)
-    % 새로운 figure 생성
+    % 새로운 figure 생성 (높이를 늘려 슬라이더가 그래프를 가리지 않도록)
     fig = figure;
+    set(fig, 'Position', [100, 100, 800, 700]);  % Figure 높이 증가
+    ax = axes('Parent', fig, 'Position', [0.1, 0.2, 0.75, 0.7]);  % 축 위치 조정 (아래 여백 늘림)
     hold on;
     
     % 현재 파일의 데이터
@@ -27,15 +29,15 @@ for i = 1:length(dataCell)
     % 6. 사이클에 따른 데이터 분류 (unique 함수 사용)
     uniqueCycles = sort(unique(data.Cycle_Number));  % 정렬하여 순서대로
     
-    % Colormap 설정 (heatmap 스타일 gradation, hot colormap 사용)
-    cmap = hot(length(uniqueCycles));  % hot colormap으로 gradation
+    % Colormap 설정 (색상 변경: parula로 gradation)
+    cmap = parula(length(uniqueCycles));  % parula colormap으로 변경
     
     % Scatter 핸들 저장 (모든 사이클 플롯 미리 생성, visibility 제어)
     scatterHandles = gobjects(length(uniqueCycles), 1);
     for j = 1:length(uniqueCycles)
         cycle = uniqueCycles(j);
         cycleData = data(data.Cycle_Number == cycle, :);
-        scatterHandles(j) = scatter(cycleData.Capacity_mAh, cycleData.Voltage_V, 10, cmap(j, :), 'filled');
+        scatterHandles(j) = scatter(ax, cycleData.Capacity_mAh, cycleData.Voltage_V, 10, cmap(j, :), 'filled');
         set(scatterHandles(j), 'Visible', 'off');  % 초기에는 숨김
     end
     
@@ -43,50 +45,77 @@ for i = 1:length(dataCell)
     set(scatterHandles(1), 'Visible', 'on');
     
     % 컬러바 추가 (heatmap 스타일, 사이클에 따른 gradation 표시)
-    colormap(cmap);  % hot colormap 적용
-    c = colorbar;
+    colormap(ax, cmap);  % parula colormap 적용
+    c = colorbar(ax);
     c.Label.String = 'Cycle Number';
     c.Label.FontSize = 12;
     c.Label.Interpreter = 'latex';
-    c.Ticks = linspace(0, 1, length(uniqueCycles));  % 컬러바 눈금 설정
-    c.TickLabels = arrayfun(@(x) sprintf('%d', x), uniqueCycles, 'UniformOutput', false);  % 사이클 번호로 라벨링
+    
+    % Tick 수 제한 (예: 최대 10개)
+    numTicks = min(10, length(uniqueCycles));  % Tick 수를 10으로 제한
+    tickPositions = linspace(0, 1, numTicks);
+    c.Ticks = tickPositions;
+    
+    % TickLabels을 균등하게 선택된 사이클 번호로 설정
+    selectedCycles = round(linspace(uniqueCycles(1), uniqueCycles(end), numTicks));
+    c.TickLabels = arrayfun(@(x) sprintf('%d', x), selectedCycles, 'UniformOutput', false);
     
     % 논문용 figure 세팅
-    xlabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
-    ylabel('Voltage (V)', 'FontSize', 14, 'Interpreter', 'latex');
-    title(sprintf('Voltage vs Capacity per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
+    xlabel(ax, 'Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
+    ylabel(ax, 'Voltage (V)', 'FontSize', 14, 'Interpreter', 'latex');
+    title(ax, sprintf('Voltage vs Capacity per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
     
-    grid on;
-    set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
-    set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
+    grid(ax, 'on');
+    set(ax, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
     
-    % Active bar (슬라이더) 추가: 사이클 선택
-    slider = uicontrol('Parent', fig, 'Style', 'slider', ...
-                       'Position', [81, 54, 419, 23], ...
-                       'Value', 1, 'Min', 1, 'Max', length(uniqueCycles), ...
-                       'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
-    slider.Callback = @(src, event) updatePlot(src, scatterHandles);
+    % Active bar (슬라이더) 추가: min과 max 슬라이더로 범위 선택
+    % 슬라이더 위치 조정 (그래프 아래쪽으로 배치)
+    minSlider = uicontrol('Parent', fig, 'Style', 'slider', ...
+                          'Position', [50, 80, 300, 20], ...
+                          'Value', 1, 'Min', 1, 'Max', length(uniqueCycles), ...
+                          'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
+    
+    maxSlider = uicontrol('Parent', fig, 'Style', 'slider', ...
+                          'Position', [400, 80, 300, 20], ...
+                          'Value', 1, 'Min', 1, 'Max', length(uniqueCycles), ...
+                          'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
     
     % 슬라이더 라벨
-    uicontrol('Parent', fig, 'Style', 'text', ...
-              'Position', [81, 30, 419, 23], ...
-              'String', sprintf('Cycle: %d', uniqueCycles(1)));
+    minLabel = uicontrol('Parent', fig, 'Style', 'text', ...
+                         'Position', [50, 50, 300, 20], ...
+                         'String', sprintf('Min Cycle: %d', uniqueCycles(1)));
+    
+    maxLabel = uicontrol('Parent', fig, 'Style', 'text', ...
+                         'Position', [400, 50, 300, 20], ...
+                         'String', sprintf('Max Cycle: %d', uniqueCycles(1)));
+    
+    % 업데이트 함수 정의 (nested function으로 변수 캡처)
+    function updatePlot(~, ~)
+        minIdx = round(minSlider.Value);
+        maxIdx = round(maxSlider.Value);
+        
+        % min > max인 경우 스왑
+        if minIdx > maxIdx
+            temp = minIdx;
+            minIdx = maxIdx;
+            maxIdx = temp;
+        end
+        
+        % 범위 내 scatter만 visible
+        set(scatterHandles, 'Visible', 'off');
+        for k = minIdx:maxIdx
+            set(scatterHandles(k), 'Visible', 'on');
+        end
+        
+        % 라벨 업데이트
+        set(minLabel, 'String', sprintf('Min Cycle: %d', uniqueCycles(minIdx)));
+        set(maxLabel, 'String', sprintf('Max Cycle: %d', uniqueCycles(maxIdx)));
+    end
+    
+    % 슬라이더 콜백 설정
+    minSlider.Callback = @updatePlot;
+    maxSlider.Callback = @updatePlot;
     
     % 추가: 논문용으로 PDF export (필요 시 주석 해제, 인터랙티브 기능은 PDF에서 동작 안 함)
-    % exportgraphics(gcf, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
-end
-
-% 콜백 함수: 슬라이더 값에 따라 플롯 업데이트
-function updatePlot(src, handles)
-    selectedIdx = round(src.Value);
-    set(handles, 'Visible', 'off');  % 모든 scatter 숨김
-    set(handles(selectedIdx), 'Visible', 'on');  % 선택된 사이클만 보이게
-    
-    % 슬라이더 아래 라벨 업데이트
-    fig = src.Parent;
-    textHandles = findobj(fig, 'Type', 'uicontrol', 'Style', 'text');
-    if ~isempty(textHandles)
-        uniqueCycles = evalin('base', 'uniqueCycles');  % base 워크스페이스에서 uniqueCycles 가져옴 (주의: 각 figure별로 다름)
-        set(textHandles(1), 'String', sprintf('Cycle: %d', uniqueCycles(selectedIdx)));
-    end
+    % exportgraphics(fig, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
 end
