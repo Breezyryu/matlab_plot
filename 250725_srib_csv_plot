@@ -30,22 +30,31 @@ for i = 1:length(dataCell)
     % Colormap 설정 (heatmap 스타일 gradation, hot colormap 사용)
     cmap = hot(length(uniqueCycles));  % hot colormap으로 gradation
     
-    % 7. 사이클별 용량-시간 scatter plot
+    % 7. 사이클별 용량-전압 scatter plot
     for j = 1:length(uniqueCycles)
         cycle = uniqueCycles(j);
         cycleData = data(data.Cycle_Number == cycle, :);
-        scatter(cycleData.Time_s, cycleData.Capacity_mAh, 10, cmap(j, :), 'filled');  % Scatter plot
+        scatter(cycleData.Capacity_mAh, cycleData.Voltage_V, 10, cmap(j, :), 'filled');  % Scatter plot
     end
     
-    % 논문용 figure 세팅 (범례 제거)
-    xlabel('Time (s)', 'FontSize', 14, 'Interpreter', 'latex');
-    ylabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
-    title(sprintf('Capacity vs Time per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
+    % 컬러바 추가 (heatmap 스타일, 사이클에 따른 gradation 표시)
+    colormap(cmap);  % hot colormap 적용
+    c = colorbar;
+    c.Label.String = 'Cycle Number';
+    c.Label.FontSize = 12;
+    c.Label.Interpreter = 'latex';
+    c.Ticks = linspace(0, 1, length(uniqueCycles));  % 컬러바 눈금 설정
+    c.TickLabels = arrayfun(@(x) sprintf('%d', x), uniqueCycles, 'UniformOutput', false);  % 사이클 번호로 라벨링
+    
+    % 논문용 figure 세팅
+    xlabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
+    ylabel('Voltage (V)', 'FontSize', 14, 'Interpreter', 'latex');
+    title(sprintf('Voltage vs Capacity per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
     
     grid on;
     set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
     set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
     
     % 추가: 논문용으로 PDF export (필요 시 주석 해제)
-    % exportgraphics(gcf, sprintf('capacity_vs_time_file%d.pdf', i), 'ContentType', 'vector');
+    % exportgraphics(gcf, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
 end
