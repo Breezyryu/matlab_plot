@@ -41,8 +41,8 @@ for i = 1:length(dataCell)
         set(scatterHandles(j), 'Visible', 'off');  % 초기에는 숨김
     end
     
-    % 초기 플롯: 첫 번째 사이클 보이게
-    set(scatterHandles(1), 'Visible', 'on');
+    % 초기 플롯: 모든 사이클 보이게 (또는 범위 설정)
+    set(scatterHandles, 'Visible', 'on');  % 초기에는 모든 사이클 보이게
     
     % 컬러바 추가 (heatmap 스타일, 사이클에 따른 gradation 표시)
     colormap(ax, cmap);  % parula colormap 적용
@@ -77,7 +77,7 @@ for i = 1:length(dataCell)
     
     maxSlider = uicontrol('Parent', fig, 'Style', 'slider', ...
                           'Position', [400, 80, 300, 20], ...
-                          'Value', 1, 'Min', 1, 'Max', length(uniqueCycles), ...
+                          'Value', length(uniqueCycles), 'Min', 1, 'Max', length(uniqueCycles), ...
                           'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
     
     % 슬라이더 라벨
@@ -87,35 +87,43 @@ for i = 1:length(dataCell)
     
     maxLabel = uicontrol('Parent', fig, 'Style', 'text', ...
                          'Position', [400, 50, 300, 20], ...
-                         'String', sprintf('Max Cycle: %d', uniqueCycles(1)));
+                         'String', sprintf('Max Cycle: %d', uniqueCycles(end)));
     
-    % 업데이트 함수 정의 (nested function으로 변수 캡처)
-    function updatePlot(~, ~)
-        minIdx = round(minSlider.Value);
-        maxIdx = round(maxSlider.Value);
-        
-        % min > max인 경우 스왑
-        if minIdx > maxIdx
-            temp = minIdx;
-            minIdx = maxIdx;
-            maxIdx = temp;
-        end
-        
-        % 범위 내 scatter만 visible
-        set(scatterHandles, 'Visible', 'off');
-        for k = minIdx:maxIdx
-            set(scatterHandles(k), 'Visible', 'on');
-        end
-        
-        % 라벨 업데이트
-        set(minLabel, 'String', sprintf('Min Cycle: %d', uniqueCycles(minIdx)));
-        set(maxLabel, 'String', sprintf('Max Cycle: %d', uniqueCycles(maxIdx)));
-    end
+    % 콜백 함수: anonymous function으로 정의 (nested function 대신)
+    updateCallback = @(src, ~) localUpdatePlot(minSlider, maxSlider, scatterHandles, uniqueCycles, minLabel, maxLabel);
     
     % 슬라이더 콜백 설정
-    minSlider.Callback = @updatePlot;
-    maxSlider.Callback = @updatePlot;
+    minSlider.Callback = updateCallback;
+    maxSlider.Callback = updateCallback;
+    
+    % 초기 업데이트 호출
+    updateCallback([], []);
     
     % 추가: 논문용으로 PDF export (필요 시 주석 해제, 인터랙티브 기능은 PDF에서 동작 안 함)
     % exportgraphics(fig, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
+end
+
+% 로컬 함수: 플롯 업데이트 (스크립트 끝에 정의)
+function localUpdatePlot(minSlider, maxSlider, handles, uniqueCycles, minLabel, maxLabel)
+    minIdx = round(minSlider.Value);
+    maxIdx = round(maxSlider.Value);
+    
+    % min > max인 경우 스왑
+    if minIdx > maxIdx
+        temp = minIdx;
+        minIdx = maxIdx;
+        maxIdx = temp;
+        minSlider.Value = minIdx;
+        maxSlider.Value = maxIdx;
+    end
+    
+    % 범위 내 scatter만 visible
+    set(handles, 'Visible', 'off');
+    for k = minIdx:maxIdx
+        set(handles(k), 'Visible', 'on');
+    end
+    
+    % 라벨 업데이트
+    set(minLabel, 'String', sprintf('Min Cycle: %d', uniqueCycles(minIdx)));
+    set(maxLabel, 'String', sprintf('Max Cycle: %d', uniqueCycles(maxIdx)));
 end
