@@ -1,0 +1,58 @@
+% 1. 폴더 경로 지정
+folderPath = 'your_folder_path_here';  % 실제 폴더 경로로 변경하세요
+
+% 2. CSV 파일 목록 가져오기
+files = dir(fullfile(folderPath, '*.csv'));
+
+% 3. 데이터 저장할 셀 배열 초기화
+dataCell = cell(length(files), 1);
+
+% 4. 각 파일을 읽어와 셀 배열에 저장
+% 열 정보: Cycle_Number, Time_s, Voltage_V, Current_mA, Temperature_C, Capacity_mAh
+for i = 1:length(files)
+    filePath = fullfile(folderPath, files(i).name);
+    data = readtable(filePath);
+    dataCell{i} = data;
+end
+
+% 하나의 figure 생성
+figure;
+hold on;
+
+% 전체 unique cycles 수집 (colormap을 위해)
+allCycles = [];
+for i = 1:length(dataCell)
+    allCycles = [allCycles; unique(dataCell{i}.Cycle_Number)];
+end
+uniqueAllCycles = unique(allCycles);
+cmap = jet(length(uniqueAllCycles));  % Colormap 설정 (전체 사이클 수에 맞춤)
+
+% 5. 각 파일 별로 사이클에 따른 데이터 분류 및 scatter plot
+cycleToColor = containers.Map(uniqueAllCycles, 1:length(uniqueAllCycles));
+for i = 1:length(dataCell)
+    data = dataCell{i};
+    uniqueCycles = unique(data.Cycle_Number);
+    
+    for j = 1:length(uniqueCycles)
+        cycle = uniqueCycles(j);
+        cycleData = data(data.Cycle_Number == cycle, :);
+        colorIdx = cycleToColor(cycle);
+        scatter(cycleData.Time_s, cycleData.Capacity_mAh, 10, cmap(colorIdx, :), 'filled');  % Scatter plot
+    end
+end
+
+% 7. figure 논문용으로 세팅
+xlabel('Time (s)', 'FontSize', 14, 'Interpreter', 'latex');
+ylabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
+title('Capacity vs Time per Cycle (Scatter)', 'FontSize', 16, 'Interpreter', 'latex');
+
+% Legend 생성 (전체 unique cycles 기반)
+legendEntries = arrayfun(@(x) sprintf('Cycle %d', x), uniqueAllCycles, 'UniformOutput', false);
+legend(legendEntries, 'Location', 'Best', 'FontSize', 12);
+
+grid on;
+set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
+set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
+
+% 추가: 논문용으로 PDF export (필요 시 주석 해제)
+% exportgraphics(gcf, 'capacity_vs_time_scatter.pdf', 'ContentType', 'vector');
