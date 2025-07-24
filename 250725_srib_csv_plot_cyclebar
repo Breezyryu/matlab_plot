@@ -1,0 +1,92 @@
+% 1. 폴더 경로 지정
+folderPath = 'your_folder_path_here';  % 실제 폴더 경로로 변경하세요
+
+% 2. CSV 파일 목록 가져오기
+files = dir(fullfile(folderPath, '*.csv'));
+
+% 3. 데이터 저장할 셀 배열 초기화
+dataCell = cell(length(files), 1);
+
+% 4. 각 파일을 읽어와 셀 배열에 저장
+% 열 정보: Cycle_Number, Time_s, Voltage_V, Current_mA, Temperature_C, Capacity_mAh
+for i = 1:length(files)
+    filePath = fullfile(folderPath, files(i).name);
+    data = readtable(filePath);
+    dataCell{i} = data;
+end
+
+% 5. 각 파일(dataCell) 별로 독립적으로 처리 및 scatter plot
+for i = 1:length(dataCell)
+    % 새로운 figure 생성
+    fig = figure;
+    hold on;
+    
+    % 현재 파일의 데이터
+    data = dataCell{i};
+    
+    % 6. 사이클에 따른 데이터 분류 (unique 함수 사용)
+    uniqueCycles = sort(unique(data.Cycle_Number));  % 정렬하여 순서대로
+    
+    % Colormap 설정 (heatmap 스타일 gradation, hot colormap 사용)
+    cmap = hot(length(uniqueCycles));  % hot colormap으로 gradation
+    
+    % Scatter 핸들 저장 (모든 사이클 플롯 미리 생성, visibility 제어)
+    scatterHandles = gobjects(length(uniqueCycles), 1);
+    for j = 1:length(uniqueCycles)
+        cycle = uniqueCycles(j);
+        cycleData = data(data.Cycle_Number == cycle, :);
+        scatterHandles(j) = scatter(cycleData.Capacity_mAh, cycleData.Voltage_V, 10, cmap(j, :), 'filled');
+        set(scatterHandles(j), 'Visible', 'off');  % 초기에는 숨김
+    end
+    
+    % 초기 플롯: 첫 번째 사이클 보이게
+    set(scatterHandles(1), 'Visible', 'on');
+    
+    % 컬러바 추가 (heatmap 스타일, 사이클에 따른 gradation 표시)
+    colormap(cmap);  % hot colormap 적용
+    c = colorbar;
+    c.Label.String = 'Cycle Number';
+    c.Label.FontSize = 12;
+    c.Label.Interpreter = 'latex';
+    c.Ticks = linspace(0, 1, length(uniqueCycles));  % 컬러바 눈금 설정
+    c.TickLabels = arrayfun(@(x) sprintf('%d', x), uniqueCycles, 'UniformOutput', false);  % 사이클 번호로 라벨링
+    
+    % 논문용 figure 세팅
+    xlabel('Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
+    ylabel('Voltage (V)', 'FontSize', 14, 'Interpreter', 'latex');
+    title(sprintf('Voltage vs Capacity per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
+    
+    grid on;
+    set(gca, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
+    set(gcf, 'Position', [100, 100, 800, 600]);  % Figure 크기 조정
+    
+    % Active bar (슬라이더) 추가: 사이클 선택
+    slider = uicontrol('Parent', fig, 'Style', 'slider', ...
+                       'Position', [81, 54, 419, 23], ...
+                       'Value', 1, 'Min', 1, 'Max', length(uniqueCycles), ...
+                       'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
+    slider.Callback = @(src, event) updatePlot(src, scatterHandles);
+    
+    % 슬라이더 라벨
+    uicontrol('Parent', fig, 'Style', 'text', ...
+              'Position', [81, 30, 419, 23], ...
+              'String', sprintf('Cycle: %d', uniqueCycles(1)));
+    
+    % 추가: 논문용으로 PDF export (필요 시 주석 해제, 인터랙티브 기능은 PDF에서 동작 안 함)
+    % exportgraphics(gcf, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
+end
+
+% 콜백 함수: 슬라이더 값에 따라 플롯 업데이트
+function updatePlot(src, handles)
+    selectedIdx = round(src.Value);
+    set(handles, 'Visible', 'off');  % 모든 scatter 숨김
+    set(handles(selectedIdx), 'Visible', 'on');  % 선택된 사이클만 보이게
+    
+    % 슬라이더 아래 라벨 업데이트
+    fig = src.Parent;
+    textHandles = findobj(fig, 'Type', 'uicontrol', 'Style', 'text');
+    if ~isempty(textHandles)
+        uniqueCycles = evalin('base', 'uniqueCycles');  % base 워크스페이스에서 uniqueCycles 가져옴 (주의: 각 figure별로 다름)
+        set(textHandles(1), 'String', sprintf('Cycle: %d', uniqueCycles(selectedIdx)));
+    end
+end
