@@ -1,8 +1,3 @@
-### 수정된 코드
-
-아래 코드는 모든 `uicontrol` 요소(slider, edit box, button, text label)의 y축 위치를 -50만큼 전체적으로 이동하도록 수정했습니다. 또한, 데이터 누락 여부를 확인하고 플롯이 올바르게 생성되는지 보장하기 위해 데이터 처리 부분을 점검했습니다.
-
-```matlab
 % 1. 폴더 경로 지정
 folderPath = 'your_folder_path_here';  % 실제 폴더 경로로 변경하세요
 
@@ -41,7 +36,7 @@ if ~any(validData)
     error('No valid data loaded from any CSV files.');
 end
 
-% 5. 각 파일(dataCell) 별로 독립적으로 처리 및 scatter plot
+% 5. 각 파일(dataCell) 별로 독립적으로 처리 및 plot
 for i = 1:length(dataCell)
     if isempty(dataCell{i})
         warning('Skipping file %d due to empty or invalid data.', i);
@@ -68,8 +63,8 @@ for i = 1:length(dataCell)
     % Colormap 설정 (색상 변경: parula로 gradation)
     cmap = parula(length(uniqueCycles));  % parula colormap으로 변경
     
-    % Scatter 핸들 저장 (모든 사이클 플롯 미리 생성, visibility 제어)
-    scatterHandles = gobjects(length(uniqueCycles), 1);
+    % Plot 핸들 저장 (모든 사이클 플롯 미리 생성, visibility 제어)
+    plotHandles = gobjects(length(uniqueCycles), 1);
     for j = 1:length(uniqueCycles)
         cycle = uniqueCycles(j);
         cycleData = data(data.Cycle_Number == cycle, :);
@@ -77,21 +72,23 @@ for i = 1:length(dataCell)
             warning('No data for cycle %d in file %d.', cycle, i);
             continue;
         end
-        scatterHandles(j) = scatter(ax, cycleData.Capacity_mAh, cycleData.Voltage_V, 10, cmap(j, :), 'filled');
-        set(scatterHandles(j), 'Visible', 'off');  % 초기에는 숨김
+        plotHandles(j) = plot(ax, cycleData.Capacity_mAh, cycleData.Voltage_V, ...
+                              'o', 'MarkerFaceColor', 'none', 'MarkerEdgeColor', cmap(j,:), ...
+                              'MarkerSize', 6, 'LineStyle', 'none');
+        set(plotHandles(j), 'Visible', 'off');  % 초기에는 숨김
     end
     
-    % 유효한 scatter 핸들만 유지
-    validHandles = ~cellfun(@isempty, {scatterHandles.XData});
-    scatterHandles = scatterHandles(validHandles);
-    if isempty(scatterHandles)
-        warning('No valid scatter plots generated for file %d.', i);
+    % 유효한 plot 핸들만 유지
+    validHandles = ~cellfun(@isempty, {plotHandles.XData});
+    plotHandles = plotHandles(validHandles);
+    if isempty(plotHandles)
+        warning('No valid plots generated for file %d.', i);
         close(fig);
         continue;
     end
     
     % 초기 플롯: 모든 사이클 보이게
-    set(scatterHandles, 'Visible', 'on');
+    set(plotHandles, 'Visible', 'on');
     
     % 컬러바 추가 (heatmap 스타일, 사이클에 따른 gradation 표시)
     colormap(ax, cmap);  % parula colormap 적용
@@ -160,7 +157,7 @@ for i = 1:length(dataCell)
               'String', 'Max Cycle Edit');
     
     % 콜백 함수: anonymous function으로 정의
-    updateCallback = @(src, ~) localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, scatterHandles, uniqueCycles);
+    updateCallback = @(src, ~) localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, plotHandles, uniqueCycles);
     
     % 슬라이더와 버튼 콜백 설정
     minSlider.Callback = updateCallback;
@@ -170,7 +167,7 @@ for i = 1:length(dataCell)
     updateButton.Callback = updateCallback;
     
     % 초기 업데이트 호출
-    localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, scatterHandles, uniqueCycles);
+    localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, plotHandles, uniqueCycles);
     
     % 추가: 논문용으로 PDF export (필요 시 주석 해제, 인터랙티브 기능은 PDF에서 동작 안 함)
     % exportgraphics(fig, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
@@ -203,7 +200,7 @@ function localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, handles, unique
         end
     end
     
-    % 범위 내 scatter만 visible
+    % 범위 내 plot만 visible
     set(handles, 'Visible', 'off');
     for k = minIdx:maxIdx
         set(handles(k), 'Visible', 'on');
@@ -215,43 +212,3 @@ function localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, handles, unique
     set(minEdit, 'String', num2str(uniqueCycles(minIdx)));
     set(maxEdit, 'String', num2str(uniqueCycles(maxIdx)));
 end
-```
-
-### 변경 사항 및 데이터 누락 방지 조치
-
-1. **uicontrol y축 위치 이동**:
-   - 모든 `uicontrol` 요소(slider, edit box, button, text label)의 `Position` 속성에서 y좌표를 `-50`만큼 이동했습니다(예: `120 + yShift`, `90 + yShift` 등).
-   - `yShift = -50` 변수를 사용하여 일관되게 적용했습니다.
-   - `axes`의 위치(`Position: [0.1, 0.25, 0.75, 0.65]`)는 이미 충분히 위쪽에 있어 xlabel이 가려지지 않도록 유지했습니다.
-
-2. **데이터 누락 방지**:
-   - **파일 목록 확인**: `dir`로 가져온 파일 목록이 비어 있는지 확인하고, 비어 있으면 에러를 발생시켜 사용자에게 알립니다.
-   - **파일 읽기 오류 처리**: `readtable` 호출을 `try-catch` 블록으로 감싸 파일 읽기 오류를 처리하고, 오류가 발생하면 경고를 출력하고 빈 테이블로 초기화합니다.
-   - **필수 열 확인**: 각 CSV 파일에 필요한 열(`Cycle_Number`, `Time_s`, `Voltage_V`, `Current_mA`, `Temperature_C`, `Capacity_mAh`)이 있는지 확인하고, 누락 시 에러를 발생시킵니다.
-   - **빈 데이터셋 확인**: `dataCell{i}`이 비어 있는 경우 해당 파일을 건너뛰고 경고를 출력합니다.
-   - **빈 사이클 확인**: `uniqueCycles`가 비어 있는 경우 해당 figure를 닫고 경고를 출력합니다.
-   - **빈 사이클 데이터 확인**: 각 사이클의 데이터가 비어 있는 경우 건너뛰고 경고를 출력합니다.
-   - **유효한 scatter 핸들 필터링**: `scatterHandles`에서 유효하지 않은(데이터가 없는) 핸들을 제거하여 플롯이 올바르게 생성되도록 했습니다.
-
-3. **추가 개선**:
-   - `axes`의 `Position`을 `[0.1, 0.25, 0.75, 0.65]`로 설정하여 아래쪽 여백을 충분히 확보했습니다. 이는 xlabel이 슬라이더나 입력 상자에 가려지지 않도록 합니다.
-   - 초기 플롯은 모든 사이클을 표시하도록 설정하여 데이터가 올바르게 로드되었는지 확인할 수 있습니다.
-
-### 주의사항
-- **폴더 경로**: `folderPath`를 실제 폴더 경로로 변경해야 합니다.
-- **데이터 형식**: CSV 파일이 지정된 열(`Cycle_Number`, `Time_s`, `Voltage_V`, `Current_mA`, `Temperature_C`, `Capacity_mAh`)을 포함하고 있어야 합니다. 열 이름이 다르거나 누락되면 에러가 발생합니다.
-- **PDF 출력**: 인터랙티브 기능(슬라이더, 입력 상자)은 PDF에서 동작하지 않으므로, `exportgraphics`는 주석 처리된 상태로 유지했습니다.
-- **MATLAB 버전**: `exportgraphics`는 MATLAB R2020a 이상에서 지원됩니다. `uicontrol`은 R2014b 이상에서 안정적으로 동작합니다.
-- **성능**: 사이클 수가 많을 경우(예: 1199개), 플롯 생성과 업데이트가 느려질 수 있습니다. 이 경우, 데이터를 샘플링하거나 사이클 범위를 사전에 제한하는 추가 로직을 고려할 수 있습니다.
-
-### 데이터 누락 관련 답변
-이 코드는 데이터 누락 가능성을 여러 단계에서 점검하여 플롯이 누락되지 않도록 했습니다:
-- 폴더에 CSV 파일이 없는 경우
-- 파일 읽기 오류 발생 시
-- 필수 열이 누락된 경우
-- 특정 사이클에 데이터가 없는 경우
-- 유효한 scatter 플롯이 없는 경우
-
-이러한 점검을 통해 플롯이 생성되지 않는 상황을 최소화했습니다. 만약 특정 파일이나 사이클에서 플롯이 누락된다면, 경고 메시지가 출력되어 어떤 파일/사이클에서 문제가 발생했는지 알 수 있습니다.
-
-추가 수정이나 특정 문제가 있으면 말씀해주세요! 예를 들어, 특정 사이클 범위만 기본적으로 표시하거나, 성능 최적화를 위해 데이터를 필터링하는 등의 추가 요구사항이 있다면 반영할 수 있습니다.
