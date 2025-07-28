@@ -109,12 +109,12 @@ for i = 1:length(dataCell)
     % 논문용 figure 세팅
     xlabel(ax, 'Capacity (mAh)', 'FontSize', 14, 'Interpreter', 'latex');
     ylabel(ax, 'Voltage (V)', 'FontSize', 14, 'Interpreter', 'latex');
-    title(ax, sprintf('Voltage vs Capacity per Cycle (File %d)', i), 'FontSize', 16, 'Interpreter', 'latex');
+    title(ax, sprintf('Voltage vs Capacity per Cycle (%s)', files(i).name), 'FontSize', 16, 'Interpreter', 'latex');
     
     grid(ax, 'on');
     set(ax, 'FontSize', 12, 'Box', 'on', 'LineWidth', 1);
     
-    % Active bar (슬라이더)와 숫자 입력 상자 둘 다 추가: min과 max 범위 선택
+    % Active bar (슬라이더) 추가: min과 max 슬라이더로 범위 선택 (숫자 입력 제외)
     % 위치 조정 (xlabel 위로, y축 -50만큼 shift)
     yShift = -50;  % y축 위치 전체 -50 이동
     minSlider = uicontrol('Parent', fig, 'Style', 'slider', ...
@@ -127,77 +127,41 @@ for i = 1:length(dataCell)
                           'Value', length(uniqueCycles), 'Min', 1, 'Max', length(uniqueCycles), ...
                           'SliderStep', [1/(length(uniqueCycles)-1), 1/(length(uniqueCycles)-1)]);
     
-    minEdit = uicontrol('Parent', fig, 'Style', 'edit', ...
-                        'Position', [50, 90 + yShift, 100, 20], ...
-                        'String', num2str(uniqueCycles(1)));
+    % 슬라이더 라벨 (현재 min/max 사이클 표시)
+    minLabel = uicontrol('Parent', fig, 'Style', 'text', ...
+                         'Position', [50, 90 + yShift, 300, 20], ...
+                         'String', sprintf('Min Cycle: %d', uniqueCycles(1)));
     
-    maxEdit = uicontrol('Parent', fig, 'Style', 'edit', ...
-                        'Position', [200, 90 + yShift, 100, 20], ...
-                        'String', num2str(uniqueCycles(end)));
+    maxLabel = uicontrol('Parent', fig, 'Style', 'text', ...
+                         'Position', [400, 90 + yShift, 300, 20], ...
+                         'String', sprintf('Max Cycle: %d', uniqueCycles(end)));
     
-    updateButton = uicontrol('Parent', fig, 'Style', 'pushbutton', ...
-                             'Position', [350, 90 + yShift, 100, 20], ...
-                             'String', 'Update');
+    % 콜백 함수: anonymous function으로 정의 (슬라이더만 사용)
+    updateCallback = @(src, ~) localUpdatePlot(minSlider, maxSlider, plotHandles, uniqueCycles, minLabel, maxLabel);
     
-    % 슬라이더/입력 라벨
-    uicontrol('Parent', fig, 'Style', 'text', ...
-              'Position', [50, 140 + yShift, 300, 20], ...
-              'String', 'Min Cycle Slider');
-    
-    uicontrol('Parent', fig, 'Style', 'text', ...
-              'Position', [400, 140 + yShift, 300, 20], ...
-              'String', 'Max Cycle Slider');
-    
-    uicontrol('Parent', fig, 'Style', 'text', ...
-              'Position', [50, 110 + yShift, 100, 20], ...
-              'String', 'Min Cycle Edit');
-    
-    uicontrol('Parent', fig, 'Style', 'text', ...
-              'Position', [200, 110 + yShift, 100, 20], ...
-              'String', 'Max Cycle Edit');
-    
-    % 콜백 함수: anonymous function으로 정의
-    updateCallback = @(src, ~) localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, plotHandles, uniqueCycles);
-    
-    % 슬라이더와 버튼 콜백 설정
+    % 슬라이더 콜백 설정
     minSlider.Callback = updateCallback;
     maxSlider.Callback = updateCallback;
-    minEdit.Callback = updateCallback;
-    maxEdit.Callback = updateCallback;
-    updateButton.Callback = updateCallback;
     
     % 초기 업데이트 호출
-    localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, plotHandles, uniqueCycles);
+    localUpdatePlot(minSlider, maxSlider, plotHandles, uniqueCycles, minLabel, maxLabel);
     
     % 추가: 논문용으로 PDF export (필요 시 주석 해제, 인터랙티브 기능은 PDF에서 동작 안 함)
     % exportgraphics(fig, sprintf('voltage_vs_capacity_file%d.pdf', i), 'ContentType', 'vector');
 end
 
 % 로컬 함수: 플롯 업데이트
-function localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, handles, uniqueCycles)
-    % 슬라이더 값 가져오기
-    minIdxSlider = round(minSlider.Value);
-    maxIdxSlider = round(maxSlider.Value);
+function localUpdatePlot(minSlider, maxSlider, handles, uniqueCycles, minLabel, maxLabel)
+    minIdx = round(minSlider.Value);
+    maxIdx = round(maxSlider.Value);
     
-    % 입력 상자 값 가져오기 (우선 입력 상자 값 사용, 없으면 슬라이더)
-    minCycleStr = get(minEdit, 'String');
-    maxCycleStr = get(maxEdit, 'String');
-    minCycle = str2double(minCycleStr);
-    maxCycle = str2double(maxCycleStr);
-    
-    if ~isnan(minCycle) && ~isnan(maxCycle) && minCycle <= maxCycle && minCycle >= uniqueCycles(1) && maxCycle <= uniqueCycles(end)
-        % 입력 상자 값이 유효하면 사용
-        [~, minIdx] = min(abs(uniqueCycles - minCycle));
-        [~, maxIdx] = min(abs(uniqueCycles - maxCycle));
-    else
-        % 유효하지 않으면 슬라이더 값 사용
-        minIdx = minIdxSlider;
-        maxIdx = maxIdxSlider;
-        if minIdx > maxIdx
-            temp = minIdx;
-            minIdx = maxIdx;
-            maxIdx = temp;
-        end
+    % min > max인 경우 스왑
+    if minIdx > maxIdx
+        temp = minIdx;
+        minIdx = maxIdx;
+        maxIdx = temp;
+        minSlider.Value = minIdx;
+        maxSlider.Value = maxIdx;
     end
     
     % 범위 내 plot만 visible
@@ -206,9 +170,7 @@ function localUpdatePlot(minSlider, maxSlider, minEdit, maxEdit, handles, unique
         set(handles(k), 'Visible', 'on');
     end
     
-    % 슬라이더와 입력 상자 동기화
-    minSlider.Value = minIdx;
-    maxSlider.Value = maxIdx;
-    set(minEdit, 'String', num2str(uniqueCycles(minIdx)));
-    set(maxEdit, 'String', num2str(uniqueCycles(maxIdx)));
+    % 라벨 업데이트
+    set(minLabel, 'String', sprintf('Min Cycle: %d', uniqueCycles(minIdx)));
+    set(maxLabel, 'String', sprintf('Max Cycle: %d', uniqueCycles(maxIdx)));
 end
